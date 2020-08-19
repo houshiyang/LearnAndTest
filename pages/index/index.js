@@ -18,6 +18,14 @@ const weatherColorMap = {
 
 const QQMapWX = require('../../libs/qqmap-wx-jssdk.js')
 
+const UNPROMPTED = 0
+const UNAUTHORIZED = 1
+const AUTHORIZED = 2
+
+const UNPROMPTED_TIPS = "点击获取当前位置"
+const UNAUTHORIZED_TIPS = "点击开启位置权限"
+const AUTHORIZED_TIPS = ""
+
 Page({
   data: {
     nowTemp: '',
@@ -26,8 +34,9 @@ Page({
     hourlyWeather: [],
     todayTemp: "",
     todayDate: "",
-    city:"广州市",
-    locationTipsText: "点击获取当前位置"
+    city: "北京市",
+    locationAuthType: UNPROMPTED,
+    locationTipsText: UNPROMPTED_TIPS
   },
 
   onPullDownRefresh() {
@@ -41,8 +50,40 @@ Page({
       key: 'EAXBZ-33R3X-AA64F-7FIPQ-BY27J-5UF5B'
       //key: 'F4LBZ - LOZRF - MITJN - NPB2S - JWPVV - BOBEL'
     })
-    this.getNow()
+    wx.getSetting({
+      success: res => {
+        let auth = res.authSetting['scope.userLocation']
+        this.setData({
+          locationAuthType: auth ? AUTHORIZED : (auth === false) ? UNAUTHPRIZED : UNPROMPTED,
+          locationTipsText: auth ? AUTHORIZED_TIPS : (auth === false) ? UNAUTHORIZED_TIPS : UNPROMPTED_TIPS
+        })
+        if (auth)
+          this.getCityandWeather()
+        else
+          this.getNow()
+      }
+    })
   },
+
+  /*
+  onShow() {
+    //必须在app.js中加入App({})才能执行onShow()
+    wx.getSetting({
+      success: res => {
+        let auth = res.authSetting['scope.userLocation']
+        if (auth && this.data.locationAuthType !== AUTHORIZED) {
+          //权限从无到有
+          this.setData({
+            locationAuthType: AUTHORIZED,
+            locationTipsText: AUTHORIZED_TIPS
+          })
+          this.getCityandWeather()
+        }
+        //权限从有到无未处理
+      }
+    })
+  },
+  */
 
   getNow(callback) {
     wx.request({
@@ -65,7 +106,6 @@ Page({
   setNow(result) {
     let temp = result.now.temp
     let weather = result.now.weather
-    console.log(temp, weather)
     this.setData({
       nowTemp: temp + '°',
       nowWeather: weatherMap[weather],
@@ -105,8 +145,26 @@ Page({
     })
   },
   onTapLocation() {
+    if (this.data.locationAuthType === UNAUTHORIZED)
+      wx.openSetting({
+        success: res => {
+          console.log(res)
+          let auth = res.authSetting["scope.userLocation"]
+          if (auth) {
+            this.getCityandWeather()
+          }
+        }
+      })
+    else
+      this.getCityandWeather()
+  },
+  getCityandWeather() {
     wx.getLocation({
       success: res => {
+        this.setData({
+          locationAuthType: AUTHORIZED,
+          locationTipsText: AUTHORIZED_TIPS
+        })
         console.log(res.latitude, res.longitude)
         this.qqmapsdk.reverseGeocoder({
           location: {
@@ -117,10 +175,16 @@ Page({
             let city = res.result.address_component.city
             this.setData({
               city: city,
-              locationTipsText:""
+              locationTipsText: ""
             })
             this.getNow()
           }
+        })
+      },
+      fail: () => {
+        this.setData({
+          locationAuthType: UNAUTHORIZED,
+          locationTipsText: UNAUTHORIZED_TIPS
         })
       }
     })
